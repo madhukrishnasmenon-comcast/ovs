@@ -49,11 +49,25 @@ VLOG_DEFINE_THIS_MODULE(socket_util_unix);
  * space for a null terminator. */
 #define MAX_UN_LEN (sizeof(((struct sockaddr_un *) 0)->sun_path) - 1)
 
+int ensure_fd0_open() {
+    if (fcntl(0, F_GETFD) == -1) {
+        open("/dev/null", O_RDONLY);
+        return 1;
+    }
+    return 0;
+}
+
 void
 xpipe(int fds[2])
 {
+    int fd0_opened = 0;
+    // ensuring that fd 0 is open so that pipe doesn't use it
+    fd0_opened = ensure_fd0_open();
     if (pipe(fds)) {
         VLOG_FATAL("failed to create pipe (%s)", ovs_strerror(errno));
+    }
+    if(fd0_opened == 1) {
+        close(0);
     }
 }
 
@@ -314,8 +328,14 @@ make_unix_socket(int style, bool nonblock,
 {
     int error;
     int fd;
-
+    int fd0_opened = 0;
+    
+    // ensuring that fd 0 is open so that socket doesn't use it
+    fd0_opened = ensure_fd0_open();
     fd = socket(PF_UNIX, style, 0);
+    if(fd0_opened == 1) {
+        close(0);
+    }
     if (fd < 0) {
         return -errno;
     }
